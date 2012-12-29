@@ -65,6 +65,7 @@ julia> x
   50.0
  100.0
 ```
+`z` is the value of the objective function, here 0 since we didn't specify anything other than constraints. `flag` reports on the status; if it is non-zero, it indicates a problem. You can use `print_linprog_flag(flag)` to see what went wrong. 
 
 If it's your first time calling `lpsolve`, there will be a substantial delay as Julia JIT-compiles all the linear programming routines. Subsequent calls will be much faster. However, suppose you'll be solving "similar" linear programs many times, perhaps with slightly different constants each time. If speed also matters, then this simple approach may not be ideal: Julia is having to parse the symbolic program into a numeric problem, then solve the numeric program.
 
@@ -79,27 +80,24 @@ Just for fun, let's build this program in two blocks:
 lpb1 = LPBlock([:pigs, :cows, :chickens])
 lpb2 = LPBlock([:stalls, :nests])
 ```
-Now we have to specify relationships:
-```julia
-barndims = [5,10]  # in units of stall dimensions
-nshelves = 4
-nests_per_shelf = 10
-```
-and add constraints, such as the fact that there cannot be a negative number of pigs and cows, that each pig or cow needs a stall, and each chicken needs a nest:
+Now we have to specify constraints, such as the fact that there cannot be a negative number of pigs and cows, that each pig or cow needs a stall, and each chicken needs a nest:
 
 ```julia
 addconstraints(lpb1, :(pigs >= 0), :(cows >= 0), :(chickens >= 0))
 addconstraints(lpb2, :(stalls >= 0), :(nests >= 0))
 addconstraints(lpb1, :(pigs+cows<$lpb2[stalls]), :(chickens<$lpb2[nests]))
 ```
-Here you can see the syntax for making a cross-reference, `$lpb2[stalls]` rather than just `stalls`, so that linear program 1 can refer to variables in linear program 2.
+Here you can see the syntax for making a cross-reference, `$lpb2[stalls]` rather than just `stalls`, so that linear program block 1 can refer to variables in linear program block 2.
 
 We need space for our nests and stalls:
 ```julia
+barndims = [5,10]  # in units of stall dimensions
+nshelves = 4
+nests_per_shelf = 10
 addconstraints(lpb2, :(nests <= $nshelves*$nests_per_shelf),
                :(stalls < prod($barndims)))
 ```
-The key new feature here is the function call `prod($barndims)`. We could just supply this as a constant, but suppose the farmer hasn't decided on a particular barn. It might be nice to re-run the same linear program with different dimensions. The function call is not evaluated immediately, but instead after the symbolic part is parsed.
+The key new feature here is the function call `prod($barndims)`. We could just supply this as a constant, but suppose the farmer hasn't decided on a particular barn. It might be nice to re-run the same linear program with different dimensions. The key point is that this function call is not evaluated immediately, but on a separate step that occurs after symbolic parsing. This provides the mechanism to rapidly update constants without having to re-parse the expressions.
 
 Finally, let's incorporate the tax and the payout:
 ```julia
@@ -121,6 +119,8 @@ lpd = lpeval(lpp)
 Now we can solve the program. In this case, let's use integers for all variables:
 ```julia
 z, x, flag = lpsolve(lpd, "Int", vcat(chunks...))
+x[chunks[1]]
+x[chunks[2]]
 ```
 The `chunks` variable is an array of index vectors specifying how variables in the combined linear program map back into the separate programs `lpb1` and `lpb2`. If you inspect the contents of `chunks`, you'll notice that there have been two new variables added; these are required to implement the soft constraint.
 
@@ -141,7 +141,7 @@ end
 tax1(t::Taxes) = t.tax1
 tax2(t::Taxes) = t.tax2
 
-addconstraints(lpb1, :(soft(pigs == 2*cows, tax1($t))))
+addconstraints(lpb1, :(soft(pigs == 2*cows, $tax1($t))))
 ```
 With this strategy, you can adjust `t.tax1 = 6` and re-run the program (starting with `lpeval` rather than `lpparse`) to see whether it's still advantageous to strive to meet the target balance.
 
@@ -149,8 +149,8 @@ A third strategy uses anonymous functions:
 ```julia
 tax = 8
 taxfun = () -> tax
-addconstraints(lpb1, :(soft(pigs == 2*cows, taxfun())))
+addconstraints(lpb1, :(soft(pigs == 2*cows, $taxfun())))
 ```
-Adjusting the `tax` variable will now cause the new value to be used by `lpeval`.
+Modifying the `tax` variable will now cause the new value to be used by `lpeval`.
 
 [Julia]: http://julialang.org "Julia"
