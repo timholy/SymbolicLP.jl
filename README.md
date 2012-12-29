@@ -66,9 +66,13 @@ julia> x
  100.0
 ```
 
+If it's your first time calling `lpsolve`, there will be a substantial delay as Julia JIT-compiles all the linear programming routines. Subsequent calls will be much faster. However, suppose you'll be solving "similar" linear programs many times, perhaps with slightly different constants each time. If speed also matters, then this simple approach may not be ideal: Julia is having to parse the symbolic program into a numeric problem, then solve the numeric program.
+
+It would be nice if there were a convenient way to do most of the symbolic parsing ahead of time, and then call the numeric solver with the new constants.
+
 ## Advanced usage
 
-Here we'll consider a more complex example to illustrate the more advanced features of the library. Let's say you're a farmer raising pigs, cows, and chickens. You have a number of nests, and space to build stalls. You get a payout of $80 per pig, $100 per cow, and $10 per chicken. However, your community values its historical balance of having approximately two pigs for every cow, and imposes a tax of `$8*|pigs-2*cows|`.
+Let's say you're a farmer raising pigs, cows, and chickens. You get a payout of $80 per pig, $100 per cow, and $10 per chicken. However, your community values its historical balance of having approximately two pigs for every cow and imposes a tax if this balance is violated, in the amount of `$8*|pigs-2cows|`. You are also resource-constrained, in that your barn has a certain footprint, and this limits the number of nests you can have for the chickens and the number of stalls you can build for the pigs and cows.
 
 Just for fun, let's build this program in two blocks:
 ```julia
@@ -81,7 +85,7 @@ barndims = [5,10]  # in units of stall dimensions
 nshelves = 4
 nests_per_shelf = 10
 ```
-and add constraints, such as the fact that there cannot be a negative number of pigs and cows, that each pig or cow needs a stall, and each chickens need a nest:
+and add constraints, such as the fact that there cannot be a negative number of pigs and cows, that each pig or cow needs a stall, and each chicken needs a nest:
 
 ```julia
 addconstraints(lpb1, :(pigs >= 0), :(cows >= 0), :(chickens >= 0))
@@ -95,14 +99,14 @@ We need space for our nests and stalls:
 addconstraints(lpb2, :(nests <= $nshelves*$nests_per_shelf),
                :(stalls < prod($barndims)))
 ```
-The key new feature here is the function call `prod($barndims)`. We could just supply this as a constant, but suppose the farmer hasn't decided on a particular barn. It might be nice to re-run the same linear program with different dimensions. The function call is not evaluated at construction time; as will be shown later, it's evaluated after the linear program is "parsed."
+The key new feature here is the function call `prod($barndims)`. We could just supply this as a constant, but suppose the farmer hasn't decided on a particular barn. It might be nice to re-run the same linear program with different dimensions. The function call is not evaluated immediately, but instead after the symbolic part is parsed.
 
 Finally, let's incorporate the tax and the payout:
 ```julia
 addconstraints(lpb1, :(soft(pigs == 2*cows, 8)))
 addobjective(lpb1, :(-80*pigs - 100*cows - 10*chickens))
 ```
-Note that the tax is implemented as a "soft" constraint. The first part says what you want to be true; the second specifies how much of a price you pay when it's violated. Soft constraints differ from "hard" constraints in that they are not required to be strictly observed. Soft constraints can also take the form of inequalities.
+Note that the tax is implemented as a "soft" constraint. The first argument of `soft` says what you want to be "approximately" true; however, this differs from "hard" constraints in that it is not required to be strictly observed. The second argument specifies how much of a price you pay when it's violated. Note that soft constraints can also take the form of inequalities.
 
 Now, because we want to efficiently run this "same" linear program for different barn sizes, we first perform all the parsing:
 ```julia
@@ -114,10 +118,11 @@ lpp, chunks = lpparse(Float64, lpb1, lpb2)
 lpd = lpeval(lpp)
 ```
 
-Now we can solve the program, using integers for all variables:
+Now we can solve the program. In this case, let's use integers for all variables:
 ```julia
 z, x, flag = lpsolve(lpd, "Int", vcat(chunks...))
 ```
+The `chunks` variable is an array of index vectors specifying how variables in the combined linear program map back into the separate programs `lpb1` and `lpb2`. If you inspect the contents of `chunks`, you'll notice that there have been two new variables added; these are required to implement the soft constraint.
 
 If we want to change the barn dimensions, we just repeat the last few steps:
 ```julia
@@ -125,5 +130,27 @@ barndims[2] = 6
 lpd = lpeval(lpp)
 z, x, flag = lpsolve(lpd, "Int", vcat(chunks...))
 ```
+Note that you can't just say `barndims = [5,6]`, because `prod($barndims)` was written in terms of a particular object (i.e., memory location), and replacing `barndims` disassociates the named variable from the original memory location. However, adjusting individual elements does not disassociate these two, and hence is one good way to support re-evaluation with alternate constant values.
+
+Another good strategy uses types and accessor functions:
+```julia
+type Taxes
+    tax1::Float64
+    tax2::Float64
+end
+tax1(t::Taxes) = t.tax1
+tax2(t::Taxes) = t.tax2
+
+addconstraints(lpb1, :(soft(pigs == 2*cows, tax1($t))))
+```
+With this strategy, you can adjust `t.tax1 = 6` and re-run the program (starting with `lpeval` rather than `lpparse`) to see whether it's still advantageous to strive to meet the target balance.
+
+A third strategy uses anonymous functions:
+```julia
+tax = 8
+taxfun = () -> tax
+addconstraints(lpb1, :(soft(pigs == 2*cows, taxfun())))
+```
+Adjusting the `tax` variable will now cause the new value to be used by `lpeval`.
 
 [Julia]: http://julialang.org "Julia"
