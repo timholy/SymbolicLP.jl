@@ -117,26 +117,32 @@ lpeval{T}(lpp::LPParsed{T}) = LPData{T}(
     lpp.vals.ub)
 
 
-function lpsolve(lpd::LPData, pv...)
-    if length(pv) > 0 && pv[1] == "Int"
+function lpsolve(lpd::LPData, pvtuple...)
+    pv = {pvtuple...}
+    intindx = find(pv[1:2:end] .== "Int")
+    useint = !isempty(intindx)
+    local param
+    if useint
         param = GLPK.IntoptParam()
-        param["msg_lev"] = GLPK.MSG_ERR
-        param["presolve"] = GLPK.ON
-        for i = 3:2:length(pv)
-            param[pv[i]] = pv[i+1]
-        end
         colkind = fill(GLPK.CV, length(lpd.f))
-        colkind[pv[2]] = GLPK.IV
-        println("mixintprog: ", colkind)
-        return mixintprog(lpd.f, lpd.A, lpd.b, lpd.Aeq, lpd.beq, lpd.lb, lpd.ub, colkind, param)
+        colkind[pv[intindx[end]+1]] = GLPK.IV
+        keep = trues(length(pv))
+        keep[intindx] = false
+        keep[intindx+1] = false
+        pv = pv[keep]
+    else
+        param = GLPK.SimplexParam()
     end
-    param = GLPK.SimplexParam()
     param["msg_lev"] = GLPK.MSG_ERR
     param["presolve"] = GLPK.ON
     for i = 1:2:length(pv)
         param[pv[i]] = pv[i+1]
     end
-    linprog_simplex(lpd.f, lpd.A, lpd.b, lpd.Aeq, lpd.beq, lpd.lb, lpd.ub, param)
+    if useint
+        return mixintprog(lpd.f, lpd.A, lpd.b, lpd.Aeq, lpd.beq, lpd.lb, lpd.ub, colkind, param)
+    else
+        return linprog_simplex(lpd.f, lpd.A, lpd.b, lpd.Aeq, lpd.beq, lpd.lb, lpd.ub, param)
+    end
 end
 
 function lpsolve(lpb::LPBlock, pv...)
