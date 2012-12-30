@@ -2,6 +2,20 @@ require("SymbolicLP")
 using SymbolicLP
 using GLPK
 
+# Soft constraints
+lpb = LPBlock([:x])
+addconstraints(lpb, :(soft(x < -3, 1)))
+z, x, flag = lpsolve(lpb)
+@assert x[1] <= -3.0
+lpb = LPBlock([:x])
+addconstraints(lpb, :(soft(x > 3, 1)))
+z, x, flag = lpsolve(lpb)
+@assert x[1] >= 3.0
+lpb = LPBlock([:x])
+addconstraints(lpb, :(soft(x == -5, 1)))
+z, x, flag = lpsolve(lpb)
+@assert abs(x[1] + 5) < sqrt(eps())
+
 # A simple case
 lpb = LPBlock([:left, :middle, :right], Expr[:(left < middle < right)])
 addconstraints(lpb,

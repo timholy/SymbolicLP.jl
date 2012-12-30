@@ -1,16 +1,14 @@
 # Utilities for linear programming
 
 require("linprog.jl")
-require("Debug")
 
 module SymbolicLP
 import GLPK
 using LinProgGLPK  # for lpsolve
-using Debug
 
 import Base.(+), Base.(-), Base.(*), Base.(/), Base.split
 
-export LPBlock, LPData, addconstraints, addobjective, lpparse, lpeval, lpsolve
+export LPBlock, LPData, LPParsed, addconstraints, addobjective, lpeval, lpparse, lpsolve
 
 ## Problem specification syntax
 # The total LP problem can be split up into blocks. The LPBlock type
@@ -119,7 +117,7 @@ lpeval{T}(lpp::LPParsed{T}) = LPData{T}(
 
 function lpsolve(lpd::LPData, pvtuple...)
     pv = {pvtuple...}
-    intindx = find(pv[1:2:end] .== "Int")
+    intindx = find(pv[1:2:end] .== "Int") # test for integer programming
     useint = !isempty(intindx)
     local param
     if useint
@@ -134,7 +132,7 @@ function lpsolve(lpd::LPData, pvtuple...)
         param = GLPK.SimplexParam()
     end
     param["msg_lev"] = GLPK.MSG_ERR
-    param["presolve"] = GLPK.ON
+    param["presolve"] = GLPK.OFF
     for i = 1:2:length(pv)
         param[pv[i]] = pv[i+1]
     end
@@ -186,7 +184,7 @@ function parsesoft(blk::LPBlock)
                 delta = gensym()
                 push(out.syms, delta)
                 push(out.constraints, expr(:comparison, Any[delta, op, 0])) # :($delta $op 0))
-                push(out.constraints, :($(args[1]) + $delta $op $(args[3])))
+                push(out.constraints, expr(:comparison, Any[:($(args[1]) + $delta), op, args[3]]))
                 if op == :(<)
                     push(out.objective, :(-$pval*$delta))
                 else
@@ -215,7 +213,6 @@ indx(l::Nothing) = Array(Int, 0)
 coef{T}(::Type{T}, l::LinearIndexExpr{T}) = l.coef
 coef{T}(::Type{T}, l::Nothing) = Array(T, 0)
 
-@debug begin
 function lpparse{T<:FloatingPoint}(::Type{T}, blocks::LPBlock...)
     nblocks = length(blocks)
     # Parse soft constraints
@@ -241,12 +238,11 @@ function lpparse{T<:FloatingPoint}(::Type{T}, blocks::LPBlock...)
         block = sblocks[iblock]
         # Parse the constraints
         for ex in block.constraints
-#             @bp
             if ex.head == :(=)
                 error("Use ==, not =, in comparisons: ", ex)
             end
             if ex.head != :comparison
-                error("Expression is not an equality or inequality:\n", ex)
+                error("Expression is not an equality or inequality: ex.head = ", ex.head, "\n  ex = ", ex)
             end
             # Parse the individual expressions
             pargs = Array(Any, length(ex.args))
@@ -271,7 +267,6 @@ function lpparse{T<:FloatingPoint}(::Type{T}, blocks::LPBlock...)
                         println("Warning: expression that uses no variables: ", ex.args[i-1:i+1])
                     elseif length(darg.indx) == 1 && isa(darg.coef[1], Number) && isa(darg.rhs, Number)
                         # upper/lower bound
-#                         @bp
                         if darg.coef[1] < 0
                             gflag = !gflag
                         end
@@ -334,7 +329,6 @@ function lpparse{T<:FloatingPoint}(::Type{T}, blocks::LPBlock...)
     lpthunk = LPData(coef(Function, thunkf), thunkA, thunkb, thunkAeq, thunkbeq, Function[], Function[])
     LPParsed(lpval, lpthunk, indx(thunkf), thunkineqindx, thunkeqindx), chunks
 end
-end # debug
 
 # Resolve references and encode linear operations
 resolve{T}(::Type{T}, arg::Number, ind::Int, blockindex::Dict{LPBlock, Int}, symindexes::Vector{Dict{Symbol, Int}}) = convert(T, arg)
