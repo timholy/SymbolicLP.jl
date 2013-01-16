@@ -58,13 +58,13 @@ LPBlock(syms::Vector{Symbol}) = LPBlock(syms, Expr[], Expr[])
 
 function addconstraints(lpb::LPBlock, exa::Expr...)
     for ex in exa
-        push(lpb.constraints, ex)
+        push!(lpb.constraints, ex)
     end
     lpb
 end
 
 function addobjective(lpb::LPBlock, ex::Expr)
-    push(lpb.objective, ex)
+    push!(lpb.objective, ex)
     lpb
 end
 
@@ -173,27 +173,27 @@ function parsesoft(blk::LPBlock)
             if op == :(==)
                 deltaneg = gensym()
                 deltapos = gensym()
-                push(out.syms, deltaneg)
-                push(out.syms, deltapos)
-                push(out.constraints, :($deltaneg < 0))
-                push(out.constraints, :($deltapos > 0))
-                push(out.constraints, :($(args[1]) - $deltaneg > $(args[3])))
-                push(out.constraints, :($(args[1]) - $deltapos < $(args[3])))
-                push(out.objective, :($pval*($deltapos-$deltaneg)))
+                push!(out.syms, deltaneg)
+                push!(out.syms, deltapos)
+                push!(out.constraints, :($deltaneg < 0))
+                push!(out.constraints, :($deltapos > 0))
+                push!(out.constraints, :($(args[1]) - $deltaneg > $(args[3])))
+                push!(out.constraints, :($(args[1]) - $deltapos < $(args[3])))
+                push!(out.objective, :($pval*($deltapos-$deltaneg)))
             else
                 delta = gensym()
-                push(out.syms, delta)
-                push(out.constraints, expr(:comparison, Any[delta, op, 0])) # :($delta $op 0))
-                push(out.constraints, expr(:comparison, Any[:($(args[1]) + $delta), op, args[3]]))
+                push!(out.syms, delta)
+                push!(out.constraints, expr(:comparison, Any[delta, op, 0])) # :($delta $op 0))
+                push!(out.constraints, expr(:comparison, Any[:($(args[1]) + $delta), op, args[3]]))
                 if op == :(<)
-                    push(out.objective, :(-$pval*$delta))
+                    push!(out.objective, :(-$pval*$delta))
                 else
-                    push(out.objective, :($pval*$delta))
+                    push!(out.objective, :($pval*$delta))
                 end
             end
         else
             # This is not a soft constraint, just copy it
-            push(out.constraints, ex)
+            push!(out.constraints, ex)
         end
     end
     out
@@ -259,7 +259,7 @@ function lpparse{T<:FloatingPoint}(::Type{T}, blocks::LPBlock...)
                 darg = pargs[i-1] - pargs[i+1]
                 if op == :(==)
                     # equality
-                    push(eqrows, darg)
+                    push!(eqrows, darg)
                 else
                     # inequality
                     gflag = op == :(>)
@@ -283,7 +283,7 @@ function lpparse{T<:FloatingPoint}(::Type{T}, blocks::LPBlock...)
                             darg.coef = _neg(darg.coef)
                             darg.rhs = _neg(darg.rhs)
                         end
-                        push(ineqrows, darg)
+                        push!(ineqrows, darg)
                     end
                 end
             end
@@ -304,15 +304,15 @@ function lpparse{T<:FloatingPoint}(::Type{T}, blocks::LPBlock...)
     for i = 1:length(ineqrows)
         valineqrows[i], tmp = split(T, ineqrows[i])
         if !(tmp === nothing)
-            push(thunkineqrows, tmp)
-            push(thunkineqindx, i)
+            push!(thunkineqrows, tmp)
+            push!(thunkineqindx, i)
         end
     end
     for i = 1:length(eqrows)
         valeqrows[i], tmp = split(T, eqrows[i])
         if !(tmp === nothing)
-            push(thunkeqrows, tmp)
-            push(thunkeqindx, i)
+            push!(thunkeqrows, tmp)
+            push!(thunkeqindx, i)
         end
     end
     valf, thunkf = split(T, objective)
@@ -406,18 +406,18 @@ function (+){T}(l1::LinearIndexExpr{T}, l2::LinearIndexExpr{T})
     ii2 = ind2[i2]
     while i1 <= length(ind1) || i2 <= length(ind2)
         if ii1 < ii2
-            push(indx, ii1)
-            push(coef, l1.coef[i1])
+            push!(indx, ii1)
+            push!(coef, l1.coef[i1])
             i1 += 1
             ii1 = i1 > length(ind1) ? typemax(Int) : ind1[i1]
         elseif ii1 > ii2
-            push(indx, ii2)
-            push(coef, l2.coef[i2])
+            push!(indx, ii2)
+            push!(coef, l2.coef[i2])
             i2 += 1
             ii2 = i2 > length(ind2) ? typemax(Int) : ind2[i2]
         else
-            push(indx, ii1)
-            push(coef, _add(l1.coef[i1], l2.coef[i2]))
+            push!(indx, ii1)
+            push!(coef, _add(l1.coef[i1], l2.coef[i2]))
             i1 += 1
             i2 += 1
             ii1 = i1 > length(ind1) ? typemax(Int) : ind1[i1]
