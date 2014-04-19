@@ -1,6 +1,10 @@
 SymbolicLP.jl
 =============
 
+This repository is deprecated; its only purpose is to provide a platform for the experimental [Layout.jl](https://github.com/timholy/Layout.jl) which was written on top of this repository. Anyone starting fresh should use [JuMP](https://github.com/JuliaOpt/JuMP.jl) instead.
+
+## Old README
+
 This package supports symbolic linear programming for the [Julia][Julia] programming language. It allows you to define the objective function and any constraints using symbols for the different variables, which in some cases may be easier than building matrices directly.
 
 This package was written to support the needs of a linear programming-based layout manager. Consequently, it supports a number of "advanced" features:
